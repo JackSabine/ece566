@@ -27,42 +27,42 @@ using namespace llvm;
 
 %}
 
-   //%option debug
+//%option debug
 
 %%
 
 [ \t]         //ignore
 
-in            { return ERROR; }
-final         { return ERROR; }
-none          { return ERROR;  }
+in            { return IN; }
+final         { return FINAL; }
+none          { return NONE;  }
 
-[a-zA-Z]+     { return ERROR; }
-[0-9]+        { return ERROR; }
+[a-zA-Z]+     { return ID; }
+[0-9]+        { return NUMBER; }
 
-"["           { return ERROR; }
-"]"           { return ERROR; }
-"("           { return ERROR; }
-")"           { return ERROR; }
+"["           { return LBRACKET; }
+"]"           { return RBRACKET; }
+"("           { return LPAREN; }
+")"           { return RPAREN; }
 
-"="           { return ERROR; }
-"*"           { return ERROR; }
-"%"           { return ERROR; }
-"/"           { return ERROR; }
-"+"           { return ERROR; }
-"-"           { return ERROR; }
+"="           { return ASSIGN; }
+"*"           { return MUL; }
+"%"           { return MOD; }
+"/"           { return DIV; }
+"+"           { return PLUS; }
+"-"           { return MINUS; }
 
-"^"           { return ERROR; }
-"|"           { return ERROR; }
-"&"           { return ERROR; }
+"^"           { return XOR; }
+"|"           { return OR; }
+"&"           { return AND; }
 
-"~"           { return ERROR; }
-"!"           { return ERROR; }
+"~"           { return INV; }
+"!"           { return BINV; }
 
 
-","           { return ERROR; }
+","           { return COMMA; }
 
-\n            { return ERROR; }
+\n            { return ENDLINE; }
 
 
 "//".*\n      { }
