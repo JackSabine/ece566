@@ -239,7 +239,15 @@ expr:   ID {
 | expr MOD expr {
   $$ = Builder.CreateSRem($1, $3);
 }
-| ID LBRACKET ensemble RBRACKET
+| ID LBRACKET ensemble RBRACKET {
+  $$ = Builder.CreateAnd(
+    Builder.CreateLShr(
+      variable_space.read($1),
+      $3
+    ),
+    Builder.getInt32(1)
+  );
+}
 | LPAREN ensemble RPAREN {
   $$ = $2;
 }
