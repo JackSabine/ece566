@@ -36,7 +36,26 @@ Module *M;
 LLVMContext TheContext;
 IRBuilder<> Builder(TheContext);
 
-map<string, Value *> variable_space;
+class VariableSpace {
+private:
+  map<string, Value *> variable_map;
+public:
+  Value *read(string *id) {
+    if (variable_map.find(*id) == variable_map.end()) {
+      // Not declared
+      fprintf(stderr,"%s is used without first being defined. Assuming 0.\n", id->c_str());
+      variable_map[*id] = Builder.getInt32(0);
+    }
+
+    return variable_map[*id];
+  }
+
+  void write(string *id, Value *value) {
+    variable_map[*id] = value;
+  }
+};
+
+VariableSpace variable_space;
 
 %}
 
@@ -148,7 +167,7 @@ statements:   statement
 
 statement: ID ASSIGN ensemble ENDLINE {
   // fprintf(stdout, "Assigning to %s\n", $1->c_str());
-  variable_space[*$1] = $3;
+  variable_space.write($1, $3);
 }
 | ID NUMBER ASSIGN ensemble ENDLINE
 | ID LBRACKET ensemble RBRACKET ASSIGN ensemble ENDLINE
@@ -165,13 +184,8 @@ ensemble:  expr {
 ;
 
 expr:   ID {
-  // cout << *$1 << " mentioned !!!! WTF IS A VARIABLE????\n";
-  if (variable_space.find(*$1) == variable_space.end()) {
-    // Not declared
-    fprintf(stderr,"%s is used without first being defined. Assuming 0.\n", $1->c_str());
-    variable_space[*$1] = Builder.getInt32(0);
-  }
-  $$ = variable_space[*$1];
+  // fprintf(stdout, "Reading from %s\n", $1->c_str());
+  $$ = variable_space.read($1);
 }
 | ID NUMBER
 | NUMBER {
