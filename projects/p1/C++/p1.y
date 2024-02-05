@@ -141,11 +141,12 @@ inputs:   IN params_list ENDLINE
 params_list: ID
 {
   $$ = new vector<string>;
-  // add ID to vector
+  $$->push_back(*$1);
 }
 | params_list COMMA ID
 {
-  // add ID to $1
+  $1->push_back(*$3);
+  $$ = $1;
 }
 ;
 
