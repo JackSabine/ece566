@@ -187,7 +187,16 @@ expr:   ID {
   // fprintf(stdout, "Reading from %s\n", $1->c_str());
   $$ = variable_space.read($1);
 }
-| ID NUMBER
+| ID NUMBER {
+  // (ID (logical)>> NUMBER) & 1
+  $$ = Builder.CreateAnd(
+    Builder.CreateLShr(
+      variable_space.read($1),
+      $2
+    ),
+    Builder.getInt32(1)
+  );
+}
 | NUMBER {
   $$ = Builder.getInt32($1);
 }
