@@ -21,7 +21,7 @@
 #include "llvm/Support/FileSystem.h"
 
 using namespace std;
-using namespace llvm;  
+using namespace llvm;
 
 #include "p1.y.hpp"
 

@@ -29,7 +29,7 @@ extern FILE *yyin;
 int yylex();
 void yyerror(const char*);
 int yyparse();
- 
+
 // Needed for LLVM
 string funName;
 Module *M;
@@ -37,7 +37,7 @@ LLVMContext TheContext;
 IRBuilder<> Builder(TheContext);
 
 map<string, Value *> variable_space;
- 
+
 %}
 
 %union {
@@ -77,16 +77,16 @@ program: inputs statements_opt final
 ;
 
 inputs:   IN params_list ENDLINE
-{  
+{
   std::vector<Type*> param_types;
   for(auto s: *$2)
     {
       param_types.push_back(Builder.getInt32Ty());
     }
   ArrayRef<Type*> Params (param_types);
-  
+
   // Create int function type with no arguments
-  FunctionType *FunType = 
+  FunctionType *FunType =
     FunctionType::get(Builder.getInt32Ty(),Params,false);
 
   // Create a main function
@@ -97,20 +97,20 @@ inputs:   IN params_list ENDLINE
     // iterate over arguments of function
     // match name to position
   }
-  
+
   //Add a basic block to main to hold instructions, and set Builder
   //to insert there
   Builder.SetInsertPoint(BasicBlock::Create(TheContext, "entry", Function));
 
 }
 | IN NONE ENDLINE
-{ 
+{
   // Create int function type with no arguments
-  FunctionType *FunType = 
+  FunctionType *FunType =
     FunctionType::get(Builder.getInt32Ty(),false);
 
   // Create a main function
-  Function *Function = Function::Create(FunType,  
+  Function *Function = Function::Create(FunType,
          GlobalValue::ExternalLinkage,funName,M);
 
   //Add a basic block to main to hold instructions, and set Builder
@@ -137,13 +137,13 @@ final: FINAL ensemble endline_opt
 ;
 
 endline_opt: %empty | ENDLINE;
-            
+
 
 statements_opt: %empty
             | statements;
 
-statements:   statement 
-            | statements statement 
+statements:   statement
+            | statements statement
 ;
 
 statement: ID ASSIGN ensemble ENDLINE {
@@ -207,15 +207,15 @@ unique_ptr<Module> parseP1File(const string &InputFilename)
     funName = funName.substr(funName.find_last_of('/')+1);
   if (funName.find_last_of('.') != string::npos)
     funName.resize(funName.find_last_of('.'));
-    
+
   //errs() << "Function will be called " << funName << ".\n";
-  
+
   // unique_ptr will clean up after us, call destructor, etc.
   unique_ptr<Module> Mptr(new Module(funName.c_str(), TheContext));
 
   // set global module
   M = Mptr.get();
-  
+
   /* this is the name of the file to generate, you can also use
      this string to figure out the name of the generated function */
   yyin = fopen(InputFilename.c_str(),"r");
@@ -227,7 +227,7 @@ unique_ptr<Module> parseP1File(const string &InputFilename)
   else
     // Dump LLVM IR to the screen for debugging
     M->print(errs(),nullptr,false,true);
-  
+
   return Mptr;
 }
 
