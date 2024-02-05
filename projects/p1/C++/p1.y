@@ -35,21 +35,28 @@ string funName;
 Module *M;
 LLVMContext TheContext;
 IRBuilder<> Builder(TheContext);
+
+map<string, Value *> variable_space;
  
 %}
 
 %union {
   vector<string> *params_list;
+  Value *val;
+  int number;
+  string *id;
 }
 
 /*%define parse.trace*/
 
 %type <params_list> params_list
+%type <val> expr
+%type <val> ensemble
 
 %token IN FINAL
 %token ERROR
-%token NUMBER
-%token ID 
+%token <number> NUMBER
+%token <id> ID
 %token BINV INV PLUS MINUS XOR AND OR MUL DIV MOD
 %token COMMA ENDLINE ASSIGN LBRACKET RBRACKET LPAREN RPAREN NONE COLON
 %token REDUCE EXPAND
@@ -140,20 +147,35 @@ statements:   statement
             | statements statement 
 ;
 
-statement: ID ASSIGN ensemble ENDLINE
+statement: ID ASSIGN ensemble ENDLINE {
+  fprintf(stdout, "Assigning to %s\n", $1->c_str());
+  variable_space[*$1] = $3;
+}
 | ID NUMBER ASSIGN ensemble ENDLINE
 | ID LBRACKET ensemble RBRACKET ASSIGN ensemble ENDLINE
 ;
 
-ensemble:  expr
+ensemble:  expr {
+  $$ = $1;
+}
 | expr COLON NUMBER                  // 566 only
 | ensemble COMMA expr
 | ensemble COMMA expr COLON NUMBER   // 566 only
 ;
 
-expr:   ID
+expr:   ID {
+  // cout << *$1 << " mentioned !!!! WTF IS A VARIABLE????\n";
+  if (variable_space.find(*$1) == variable_space.end()) {
+    // Not declared
+    fprintf(stderr,"%s is used without first being defined. Assuming 0.\n", $1->c_str());
+    variable_space[*$1] = Builder.getInt32(0);
+  }
+  $$ = variable_space[*$1];
+}
 | ID NUMBER
-| NUMBER
+| NUMBER {
+  $$ = Builder.getInt32($1);
+}
 | expr PLUS expr
 | expr MINUS expr
 | expr XOR expr

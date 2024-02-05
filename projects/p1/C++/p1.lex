@@ -37,8 +37,14 @@ in            { return IN; }
 final         { return FINAL; }
 none          { return NONE;  }
 
-[a-zA-Z]+     { return ID; }
-[0-9]+        { return NUMBER; }
+[a-zA-Z]+     {
+  yylval.id = new string(yytext);
+  return ID;
+}
+[0-9]+        {
+  yylval.number = atoi(yytext);
+  return NUMBER;
+}
 
 "["           { return LBRACKET; }
 "]"           { return RBRACKET; }
