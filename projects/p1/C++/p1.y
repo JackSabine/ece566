@@ -53,6 +53,11 @@ public:
   void write(string *id, Value *value) {
     variable_map[*id] = value;
   }
+
+  void add_argument(string *id, Argument *argument) {
+    // Argument is a child of Value
+    variable_map[*id] = argument;
+  }
 };
 
 VariableSpace variable_space;
@@ -111,10 +116,13 @@ inputs:   IN params_list ENDLINE
   // Create a main function
   Function *Function = Function::Create(FunType,GlobalValue::ExternalLinkage,funName,M);
 
-  int arg_no=0;
-  for(auto &a: Function->args()) {
+  for(Argument &a: Function->args()) {
     // iterate over arguments of function
     // match name to position
+    variable_space.add_argument(
+      &$2->at(a.getArgNo()),
+      &a
+    );
   }
 
   //Add a basic block to main to hold instructions, and set Builder
