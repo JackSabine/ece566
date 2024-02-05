@@ -191,18 +191,40 @@ expr:   ID {
 | NUMBER {
   $$ = Builder.getInt32($1);
 }
-| expr PLUS expr
-| expr MINUS expr
-| expr XOR expr
-| expr AND expr
-| expr OR expr
-| INV expr
-| BINV expr
-| expr MUL expr
-| expr DIV expr
-| expr MOD expr
+| expr PLUS expr {
+  $$ = Builder.CreateAdd($1, $3);
+}
+| expr MINUS expr {
+  $$ = Builder.CreateSub($1, $3);
+}
+| expr XOR expr {
+  $$ = Builder.CreateXor($1, $3);
+}
+| expr AND expr {
+  $$ = Builder.CreateAnd($1, $3);
+}
+| expr OR expr {
+  $$ = Builder.CreateOr($1, $3);
+}
+| INV expr {
+  $$ = Builder.CreateNot($2);
+}
+| BINV expr {
+  $$ = Builder.CreateXor($2, Builder.getInt32(1));
+}
+| expr MUL expr {
+  $$ = Builder.CreateMul($1, $3);
+}
+| expr DIV expr {
+  $$ = Builder.CreateSDiv($1, $3); // Signed division per https://piazza.com/class/lr5jf250zob9a/post/40
+}
+| expr MOD expr {
+  $$ = Builder.CreateSRem($1, $3);
+}
 | ID LBRACKET ensemble RBRACKET
-| LPAREN ensemble RPAREN
+| LPAREN ensemble RPAREN {
+  $$ = $2;
+}
 /* 566 only */
 | LPAREN ensemble RPAREN LBRACKET ensemble RBRACKET
 | REDUCE AND LPAREN ensemble RPAREN
