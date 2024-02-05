@@ -132,8 +132,7 @@ params_list: ID
 
 final: FINAL ensemble endline_opt
 {
-  // FIX ME, ALWAYS RETURNS 0
-  Builder.CreateRet(Builder.getInt32(0));
+  Builder.CreateRet($2);
 }
 ;
 
@@ -148,7 +147,7 @@ statements:   statement
 ;
 
 statement: ID ASSIGN ensemble ENDLINE {
-  fprintf(stdout, "Assigning to %s\n", $1->c_str());
+  // fprintf(stdout, "Assigning to %s\n", $1->c_str());
   variable_space[*$1] = $3;
 }
 | ID NUMBER ASSIGN ensemble ENDLINE
@@ -159,7 +158,9 @@ ensemble:  expr {
   $$ = $1;
 }
 | expr COLON NUMBER                  // 566 only
-| ensemble COMMA expr
+| ensemble COMMA expr {
+  $$ = Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3);
+}
 | ensemble COMMA expr COLON NUMBER   // 566 only
 ;
 
