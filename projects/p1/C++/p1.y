@@ -60,6 +60,51 @@ public:
   }
 };
 
+enum ReductionType {REDUCE_AND = 0, REDUCE_OR, REDUCE_XOR, REDUCE_ADD};
+
+Value *reduction_atom(Value *LHS, Value *RHS, ReductionType reduction_type) {
+  switch(reduction_type) {
+    case REDUCE_AND:
+      return Builder.CreateAnd(LHS, RHS);
+    case REDUCE_OR:
+      return Builder.CreateOr(LHS, RHS);
+    case REDUCE_XOR:
+      return Builder.CreateXor(LHS, RHS);
+    case REDUCE_ADD:
+      return Builder.CreateAdd(LHS, RHS);
+    default:
+      fprintf(stderr, "reduction_type (%0d) not implemented\n", reduction_type);
+      return Builder.getInt32(0);
+  }
+}
+
+Value *tree_reduction(Value *ensemble_value, ReductionType reduction_type) {
+  Value *bit_array[32];
+
+  for (int i = 0; i < 32; i++) {
+    bit_array[i] = Builder.CreateAnd(
+      Builder.CreateLShr(
+        ensemble_value,
+        Builder.getInt32(i)
+      ),
+      Builder.getInt32(1)
+    );
+  }
+
+  // bit_array is now the ensemble split into 32 numbers whose values are in the set {0, 1}
+  for (int inc = 1; inc < 32; inc *= 2) {
+    for (int i = 0; i < 32; i = i + (2*inc)) {
+      bit_array[i] = reduction_atom(
+        bit_array[i],
+        bit_array[i + inc],
+        reduction_type
+      );
+    }
+  }
+
+  return bit_array[0];
+}
+
 VariableSpace variable_space;
 
 %}
@@ -261,10 +306,18 @@ expr:   ID {
     Builder.getInt32(1)
   );
 }
-| REDUCE AND LPAREN ensemble RPAREN
-| REDUCE OR LPAREN ensemble RPAREN
-| REDUCE XOR LPAREN ensemble RPAREN
-| REDUCE PLUS LPAREN ensemble RPAREN
+| REDUCE AND LPAREN ensemble RPAREN {
+  $$ = tree_reduction($4, REDUCE_AND);
+}
+| REDUCE OR LPAREN ensemble RPAREN {
+  $$ = tree_reduction($4, REDUCE_OR);
+}
+| REDUCE XOR LPAREN ensemble RPAREN {
+  $$ = tree_reduction($4, REDUCE_XOR);
+}
+| REDUCE PLUS LPAREN ensemble RPAREN {
+  $$ = tree_reduction($4, REDUCE_ADD);
+}
 | EXPAND  LPAREN ensemble RPAREN {
   // Duplicate the lsb 32 times
   // 0 - ($3 & 1)
