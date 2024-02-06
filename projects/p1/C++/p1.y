@@ -60,6 +60,8 @@ public:
   }
 };
 
+VariableSpace variable_space;
+
 enum ReductionType {REDUCE_AND = 0, REDUCE_OR, REDUCE_XOR, REDUCE_ADD};
 
 Value *reduction_atom(Value *LHS, Value *RHS, ReductionType reduction_type) {
@@ -105,7 +107,44 @@ Value *tree_reduction(Value *ensemble_value, ReductionType reduction_type) {
   return bit_array[0];
 }
 
-VariableSpace variable_space;
+void indexed_write_to_variable(string *id, Value *index, Value *value_to_write) {
+  // FIXME assert that the variable is declared before reading
+  Value *local_id_value;
+
+  Value *masked;
+  Value *shifted_lsb;
+  Value *bit_inserted_id_value;
+
+  local_id_value = variable_space.read(id);
+
+  // masked = local_id_value & ~(1 << index);
+  masked = Builder.CreateAnd(
+    Builder.CreateNot(
+      Builder.CreateShl(
+        Builder.getInt32(1),
+        index
+      )
+    ),
+    local_id_value
+  );
+
+  // shifted_lsb = (ensemble & 1) << index;
+  shifted_lsb = Builder.CreateShl(
+    Builder.CreateAnd(
+      value_to_write,
+      Builder.getInt32(1)
+    ),
+    index
+  );
+
+  // bit_inserted_id_value = masked | shifted_lsb;
+  bit_inserted_id_value = Builder.CreateOr(
+    masked,
+    shifted_lsb
+  );
+
+  variable_space.write(id, bit_inserted_id_value);
+}
 
 %}
 
@@ -223,8 +262,12 @@ statement: ID ASSIGN ensemble ENDLINE {
   // fprintf(stdout, "Assigning to %s\n", $1->c_str());
   variable_space.write($1, $3);
 }
-| ID NUMBER ASSIGN ensemble ENDLINE
-| ID LBRACKET ensemble RBRACKET ASSIGN ensemble ENDLINE
+| ID NUMBER ASSIGN ensemble ENDLINE {
+  indexed_write_to_variable($1, Builder.getInt32($2), $4);
+}
+| ID LBRACKET ensemble RBRACKET ASSIGN ensemble ENDLINE {
+  indexed_write_to_variable($1, $3, $6);
+}
 ;
 
 ensemble:  expr {
