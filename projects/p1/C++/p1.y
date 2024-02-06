@@ -40,9 +40,12 @@ class VariableSpace {
 private:
   map<string, Value *> variable_map;
 public:
+  bool id_is_undeclared(string *id) {
+    return variable_map.find(*id) == variable_map.end();
+  }
+
   Value *read(string *id) {
-    if (variable_map.find(*id) == variable_map.end()) {
-      // Not declared
+    if (id_is_undeclared(id)) {
       fprintf(stderr,"%s is used without first being defined. Assuming 0.\n", id->c_str());
       variable_map[*id] = Builder.getInt32(0);
     }
@@ -108,7 +111,6 @@ Value *tree_reduction(Value *ensemble_value, ReductionType reduction_type) {
 }
 
 void indexed_write_to_variable(string *id, Value *index, Value *value_to_write) {
-  // FIXME assert that the variable is declared before reading
   Value *local_id_value;
 
   Value *masked;
@@ -263,9 +265,15 @@ statement: ID ASSIGN ensemble ENDLINE {
   variable_space.write($1, $3);
 }
 | ID NUMBER ASSIGN ensemble ENDLINE {
+  if (variable_space.id_is_undeclared($1)) {
+    YYABORT;
+  }
   indexed_write_to_variable($1, Builder.getInt32($2), $4);
 }
 | ID LBRACKET ensemble RBRACKET ASSIGN ensemble ENDLINE {
+  if (variable_space.id_is_undeclared($1)) {
+    YYABORT;
+  }
   indexed_write_to_variable($1, $3, $6);
 }
 ;
