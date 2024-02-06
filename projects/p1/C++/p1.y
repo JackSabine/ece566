@@ -265,7 +265,22 @@ expr:   ID {
 | REDUCE OR LPAREN ensemble RPAREN
 | REDUCE XOR LPAREN ensemble RPAREN
 | REDUCE PLUS LPAREN ensemble RPAREN
-| EXPAND  LPAREN ensemble RPAREN
+| EXPAND  LPAREN ensemble RPAREN {
+  // Duplicate the lsb 32 times
+  // 0 - ($3 & 1)
+  //
+  // ($3 & 1) | 0 - ($3 & 1)
+  // ---------+-------------
+  //        0 | 0 - 0 = 0
+  //        1 | 0 - 1 = FFFF_FFFF
+  $$ = Builder.CreateSub(
+    Builder.getInt32(0),
+    Builder.CreateAnd(
+      $3,
+      Builder.getInt32(1)
+    )
+  );
+}
 ;
 
 %%
