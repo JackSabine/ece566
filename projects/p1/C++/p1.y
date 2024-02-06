@@ -252,7 +252,15 @@ expr:   ID {
   $$ = $2;
 }
 /* 566 only */
-| LPAREN ensemble RPAREN LBRACKET ensemble RBRACKET
+| LPAREN ensemble RPAREN LBRACKET ensemble RBRACKET {
+  $$ = Builder.CreateAnd(
+    Builder.CreateLShr(
+      $2,
+      $5
+    ),
+    Builder.getInt32(1)
+  );
+}
 | REDUCE AND LPAREN ensemble RPAREN
 | REDUCE OR LPAREN ensemble RPAREN
 | REDUCE XOR LPAREN ensemble RPAREN
