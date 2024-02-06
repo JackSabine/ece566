@@ -36,6 +36,8 @@ using namespace llvm;
 in            { return IN; }
 final         { return FINAL; }
 none          { return NONE;  }
+reduce        { return REDUCE; }
+expand        { return EXPAND; }
 
 [a-zA-Z]+     {
   yylval.id = new string(yytext);
