@@ -75,5 +75,4 @@ p1_simple_test(flip 566)
 p1_simple_test(syndrome_ecc 566)
 p1_simple_test(into_ecc 566)
 
-
-
+p1_simple_test(colon_test_1 unofficial)
