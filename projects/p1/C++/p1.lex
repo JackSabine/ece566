@@ -70,6 +70,8 @@ expand        { return EXPAND; }
 
 ","           { return COMMA; }
 
+":"           { return COLON; }
+
 \n            { return ENDLINE; }
 
 
