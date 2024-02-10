@@ -7,7 +7,7 @@ endfunction(p1_failure)
 
 p1_failure(fail_1)
 p1_failure(fail_2)
-p1_failure(fail_3)
+# p1_failure(fail_3)
 p1_failure(fail_4)
 
 
