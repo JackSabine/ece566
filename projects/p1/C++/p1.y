@@ -300,14 +300,14 @@ expr:   ID {
   $$ = variable_space.read($1);
 }
 | ID NUMBER {
+  Value *variable_read;
+  Value *shifted;
+
+  variable_read = variable_space.read($1);
+
   // (ID (logical)>> NUMBER) & 1
-  $$ = Builder.CreateAnd(
-    Builder.CreateLShr(
-      variable_space.read($1),
-      $2
-    ),
-    Builder.getInt32(1)
-  );
+  shifted = ($2 != 0) ? Builder.CreateLShr(variable_read, $2) : variable_read;
+  $$ = Builder.CreateAnd(shifted, Builder.getInt32(1));
 }
 | NUMBER {
   $$ = Builder.getInt32($1);
