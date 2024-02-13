@@ -148,6 +148,48 @@ void indexed_write_to_variable(string *id, Value *index, Value *value_to_write) 
   variable_space.write(id, bit_inserted_id_value);
 }
 
+map<string, Value *> variable_index_cache;
+
+Value *indexed_variable_read(string *id, int index) {
+  Value *variable_read;
+  Value *shifted;
+  Value *masked;
+
+  string formatted_map_index;
+
+  formatted_map_index = string(*id) + to_string(index);
+
+  if (variable_index_cache.find(formatted_map_index) == variable_index_cache.end()) {
+    // Missed in cache, make new instructions
+    variable_read = variable_space.read(id);
+
+    // (ID (logical)>> NUMBER) & 1
+    shifted = (index != 0) ? Builder.CreateLShr(variable_read, index) : variable_read;
+    masked = (index != 31) ? Builder.CreateAnd(shifted, Builder.getInt32(1)) : shifted;
+    variable_index_cache[formatted_map_index] = masked;
+  }
+
+  return variable_index_cache.at(formatted_map_index);
+}
+
+// Clear cache for specific index of a variable
+void clear_specific_index_of_variable(string *id, int index) {
+  string formatted_map_index;
+
+  formatted_map_index = string(*id) + to_string(index);
+
+  if (variable_index_cache.find(formatted_map_index) == variable_index_cache.end()) {
+    variable_index_cache.erase(formatted_map_index);
+  }
+}
+
+// Clear cache for all indices for variable
+void clear_all_indices_of_variable(string *id) {
+  for (int i = 0; i < 32; i++) {
+    clear_specific_index_of_variable(id, i);
+  }
+}
+
 %}
 
 %union {
@@ -269,12 +311,14 @@ statement: ID ASSIGN ensemble ENDLINE {
     YYABORT;
   }
   indexed_write_to_variable($1, Builder.getInt32($2), $4);
+  clear_specific_index_of_variable($1, $2);
 }
 | ID LBRACKET ensemble RBRACKET ASSIGN ensemble ENDLINE {
   if (variable_space.id_is_undeclared($1)) {
     YYABORT;
   }
   indexed_write_to_variable($1, $3, $6);
+  clear_all_indices_of_variable($1);
 }
 ;
 
@@ -300,14 +344,7 @@ expr:   ID {
   $$ = variable_space.read($1);
 }
 | ID NUMBER {
-  Value *variable_read;
-  Value *shifted;
-
-  variable_read = variable_space.read($1);
-
-  // (ID (logical)>> NUMBER) & 1
-  shifted = ($2 != 0) ? Builder.CreateLShr(variable_read, $2) : variable_read;
-  $$ = Builder.CreateAnd(shifted, Builder.getInt32(1));
+  $$ = indexed_variable_read($1, $2);
 }
 | NUMBER {
   $$ = Builder.getInt32($1);
