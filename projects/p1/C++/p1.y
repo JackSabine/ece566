@@ -36,6 +36,9 @@ Module *M;
 LLVMContext TheContext;
 IRBuilder<> Builder(TheContext);
 
+// Forward declarations
+Value *indexed_variable_read(string *id, int index);
+
 class VariableSpace {
 private:
   map<string, Value *> variable_map;
@@ -83,17 +86,42 @@ Value *reduction_atom(Value *LHS, Value *RHS, ReductionType reduction_type) {
   }
 }
 
-Value *tree_reduction(Value *ensemble_value, ReductionType reduction_type) {
+Value *id_tree_reduction(string *id, ReductionType reduction_type) {
   Value *bit_array[32];
 
   for (int i = 0; i < 32; i++) {
-    bit_array[i] = Builder.CreateAnd(
-      Builder.CreateLShr(
-        ensemble_value,
-        Builder.getInt32(i)
-      ),
-      Builder.getInt32(1)
-    );
+    bit_array[i] = indexed_variable_read(id, i);
+  }
+
+  // bit_array is now the ensemble split into 32 numbers whose values are in the set {0, 1}
+  for (int inc = 1; inc < 32; inc *= 2) {
+    for (int i = 0; i < 32; i = i + (2*inc)) {
+      bit_array[i] = reduction_atom(
+        bit_array[i],
+        bit_array[i + inc],
+        reduction_type
+      );
+    }
+  }
+
+  return bit_array[0];
+}
+
+Value *ensemble_tree_reduction(Value *ensemble_value, ReductionType reduction_type) {
+  Value *bit_array[32];
+
+  for (int i = 0; i < 32; i++) {
+    if (i == 0) bit_array[i] = Builder.CreateAnd(ensemble_value, Builder.getInt32(1));
+    if (i == 31) bit_array[i] = Builder.CreateLShr(ensemble_value, Builder.getInt32(1));
+    else {
+      bit_array[i] = Builder.CreateAnd(
+        Builder.CreateLShr(
+          ensemble_value,
+          Builder.getInt32(i)
+        ),
+        Builder.getInt32(1)
+      );
+    }
   }
 
   // bit_array is now the ensemble split into 32 numbers whose values are in the set {0, 1}
@@ -401,17 +429,29 @@ expr:   ID {
     Builder.getInt32(1)
   );
 }
+| REDUCE AND LPAREN ID RPAREN {
+  $$ = id_tree_reduction($4, REDUCE_AND);
+}
+| REDUCE OR LPAREN ID RPAREN {
+  $$ = id_tree_reduction($4, REDUCE_OR);
+}
+| REDUCE XOR LPAREN ID RPAREN {
+  $$ = id_tree_reduction($4, REDUCE_XOR);
+}
+| REDUCE PLUS LPAREN ID RPAREN {
+  $$ = id_tree_reduction($4, REDUCE_ADD);
+}
 | REDUCE AND LPAREN ensemble RPAREN {
-  $$ = tree_reduction($4, REDUCE_AND);
+  $$ = ensemble_tree_reduction($4, REDUCE_AND);
 }
 | REDUCE OR LPAREN ensemble RPAREN {
-  $$ = tree_reduction($4, REDUCE_OR);
+  $$ = ensemble_tree_reduction($4, REDUCE_OR);
 }
 | REDUCE XOR LPAREN ensemble RPAREN {
-  $$ = tree_reduction($4, REDUCE_XOR);
+  $$ = ensemble_tree_reduction($4, REDUCE_XOR);
 }
 | REDUCE PLUS LPAREN ensemble RPAREN {
-  $$ = tree_reduction($4, REDUCE_ADD);
+  $$ = ensemble_tree_reduction($4, REDUCE_ADD);
 }
 | EXPAND  LPAREN ensemble RPAREN {
   // Duplicate the lsb 32 times
