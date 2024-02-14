@@ -23,6 +23,8 @@
 using namespace std;
 using namespace llvm;
 
+class BetterExpr; // Forward declaring
+
 #include "p1.y.hpp"
 
 %}

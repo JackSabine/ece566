@@ -218,6 +218,28 @@ void clear_all_indices_of_variable(string *id) {
   }
 }
 
+class BetterExpr {
+public:
+  Value *value;
+  bool is_a_single_bit_slice;
+  string *id;
+  int index;
+
+  BetterExpr(Value *value) {
+    this->value = value;
+    this->is_a_single_bit_slice = false;
+    this->id = nullptr;
+    this->index = 0;
+  }
+
+  BetterExpr(Value *value, string *id, int index) {
+    this->value = value;
+    this->is_a_single_bit_slice = false; // FIXME change to true
+    this->id = id;
+    this->index = index;
+  }
+};
+
 %}
 
 %union {
@@ -225,12 +247,13 @@ void clear_all_indices_of_variable(string *id) {
   Value *val;
   int number;
   string *id;
+  BetterExpr *better_expr;
 }
 
 /*%define parse.trace*/
 
 %type <params_list> params_list
-%type <val> expr
+%type <better_expr> expr
 %type <val> ensemble
 
 %token IN FINAL
@@ -351,17 +374,17 @@ statement: ID ASSIGN ensemble ENDLINE {
 ;
 
 ensemble:  expr {
-  $$ = $1;
+  $$ = $1->value;
 }
 | expr COLON NUMBER {                  // 566 only
-  $$ = Builder.CreateShl($1, Builder.getInt32($3));
+  $$ = Builder.CreateShl($1->value, Builder.getInt32($3));
 }
 | ensemble COMMA expr {
-  $$ = Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3);
+  $$ = Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3->value);
 }
 | ensemble COMMA expr COLON NUMBER {  // 566 only
   $$ = Builder.CreateShl(
-    Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3),
+    Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3->value),
     Builder.getInt32($5)
   );
 }
@@ -369,89 +392,94 @@ ensemble:  expr {
 
 expr:   ID {
   // fprintf(stdout, "Reading from %s\n", $1->c_str());
-  $$ = variable_space.read($1);
+  $$ = new BetterExpr(variable_space.read($1));
 }
 | ID NUMBER {
-  $$ = indexed_variable_read($1, $2);
+  $$ = new BetterExpr(indexed_variable_read($1, $2), $1, $2);
 }
 | NUMBER {
-  $$ = Builder.getInt32($1);
+  $$ = new BetterExpr(Builder.getInt32($1));
 }
 | expr PLUS expr {
-  $$ = Builder.CreateAdd($1, $3);
+  $$ = new BetterExpr(Builder.CreateAdd($1->value, $3->value));
 }
 | expr MINUS expr {
-  $$ = Builder.CreateSub($1, $3);
+  $$ = new BetterExpr(Builder.CreateSub($1->value, $3->value));
 }
 | expr XOR expr {
-  $$ = Builder.CreateXor($1, $3);
+  $$ = new BetterExpr(Builder.CreateXor($1->value, $3->value));
 }
 | expr AND expr {
-  $$ = Builder.CreateAnd($1, $3);
+  $$ = new BetterExpr(Builder.CreateAnd($1->value, $3->value));
 }
 | expr OR expr {
-  $$ = Builder.CreateOr($1, $3);
+  $$ = new BetterExpr(Builder.CreateOr($1->value, $3->value));
 }
 | INV expr {
-  $$ = Builder.CreateNot($2);
+  $$ = new BetterExpr(Builder.CreateNot($2->value));
 }
 | BINV expr {
-  $$ = Builder.CreateXor($2, Builder.getInt32(1));
+  $$ = new BetterExpr(Builder.CreateXor($2->value, Builder.getInt32(1)));
 }
 | expr MUL expr {
-  $$ = Builder.CreateMul($1, $3);
+  $$ = new BetterExpr(Builder.CreateMul($1->value, $3->value));
 }
 | expr DIV expr {
-  $$ = Builder.CreateSDiv($1, $3); // Signed division per https://piazza.com/class/lr5jf250zob9a/post/40
+  // Signed division per https://piazza.com/class/lr5jf250zob9a/post/40
+  $$ = new BetterExpr(Builder.CreateSDiv($1->value, $3->value));
 }
 | expr MOD expr {
-  $$ = Builder.CreateSRem($1, $3);
+  $$ = new BetterExpr(Builder.CreateSRem($1->value, $3->value));
 }
 | ID LBRACKET ensemble RBRACKET {
-  $$ = Builder.CreateAnd(
-    Builder.CreateLShr(
-      variable_space.read($1),
-      $3
-    ),
-    Builder.getInt32(1)
+  $$ = new BetterExpr(
+    Builder.CreateAnd(
+      Builder.CreateLShr(
+        variable_space.read($1),
+        $3
+      ),
+      Builder.getInt32(1)
+    )
   );
 }
 | LPAREN ensemble RPAREN {
-  $$ = $2;
+  $$ = new BetterExpr($2);
 }
 /* 566 only */
 | LPAREN ensemble RPAREN LBRACKET ensemble RBRACKET {
-  $$ = Builder.CreateAnd(
-    Builder.CreateLShr(
-      $2,
-      $5
-    ),
-    Builder.getInt32(1)
+  $$ = new BetterExpr(
+      Builder.CreateAnd(
+      Builder.CreateLShr(
+        $2,
+        $5
+      ),
+      Builder.getInt32(1)
+    )
   );
 }
 | REDUCE AND LPAREN ID RPAREN {
-  $$ = id_tree_reduction($4, REDUCE_AND);
+  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_AND));
 }
 | REDUCE OR LPAREN ID RPAREN {
-  $$ = id_tree_reduction($4, REDUCE_OR);
+  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_OR));
 }
 | REDUCE XOR LPAREN ID RPAREN {
-  $$ = id_tree_reduction($4, REDUCE_XOR);
+  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_XOR));
 }
 | REDUCE PLUS LPAREN ID RPAREN {
-  $$ = id_tree_reduction($4, REDUCE_ADD);
+  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_ADD));
 }
 | REDUCE AND LPAREN ensemble RPAREN {
-  $$ = ensemble_tree_reduction($4, REDUCE_AND);
+  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_AND));
 }
 | REDUCE OR LPAREN ensemble RPAREN {
-  $$ = ensemble_tree_reduction($4, REDUCE_OR);
+  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_OR));
 }
 | REDUCE XOR LPAREN ensemble RPAREN {
-  $$ = ensemble_tree_reduction($4, REDUCE_XOR);
+  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_XOR));
 }
 | REDUCE PLUS LPAREN ensemble RPAREN {
-  $$ = ensemble_tree_reduction($4, REDUCE_ADD);
+  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_ADD));
 }
 | EXPAND  LPAREN ensemble RPAREN {
   // Duplicate the lsb 32 times
@@ -461,11 +489,13 @@ expr:   ID {
   // ---------+-------------
   //        0 | 0 - 0 = 0
   //        1 | 0 - 1 = FFFF_FFFF
-  $$ = Builder.CreateSub(
-    Builder.getInt32(0),
-    Builder.CreateAnd(
-      $3,
-      Builder.getInt32(1)
+  $$ = new BetterExpr(
+    Builder.CreateSub(
+      Builder.getInt32(0),
+      Builder.CreateAnd(
+        $3,
+        Builder.getInt32(1)
+      )
     )
   );
 }
