@@ -224,14 +224,16 @@ public:
   bool is_an_aggregate;
 
   Value *value; // used by non-aggregates
+  int postshift;
 
   string id;
   int aggregate_width;
   int aggregate_min_index;
 
-  AggregatedEnsembleElement(Value *value) {
+  AggregatedEnsembleElement(Value *value, int postshift) {
     this->is_an_aggregate = false;
     this->value = value;
+    this->postshift = postshift;
     this->id = "";
     this->aggregate_width = 0;
     this->aggregate_min_index = 0;
@@ -240,6 +242,7 @@ public:
   AggregatedEnsembleElement(string id, int aggregate_width, int aggregate_min_index) {
     this->is_an_aggregate = true;
     this->value = nullptr;
+    this->postshift = 0;
     this->id = id;
     this->aggregate_width = aggregate_width;
     this->aggregate_min_index = aggregate_min_index;
@@ -302,7 +305,8 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
       if (
         curr_bexpr->is_a_single_bit_slice &&
         string(*curr_bexpr->id) == active_variable &&
-        curr_bexpr->index == (lowest_index - 1)
+        curr_bexpr->index == (lowest_index - 1) &&
+        curr_postshift == 0
       ) {
         // New streak member!
         cout << "New streak member\n";
@@ -332,7 +336,12 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
         lowest_index = curr_bexpr->index;
       } else {
         // Not eligible for a streak, push expr and postshift to aggregated_ensemble
-        aggregated_ensemble.push_back(AggregatedEnsembleElement(curr_bexpr->value));
+        aggregated_ensemble.push_back(
+          AggregatedEnsembleElement(
+            curr_bexpr->value,
+            curr_postshift
+          )
+        );
       }
     }
     i++;
@@ -417,6 +426,9 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
         result = curr.value;
       } else {
         result = Builder.CreateOr(Builder.CreateShl(result, Builder.getInt32(1)), curr.value);
+      }
+      if (curr.postshift != 0) {
+        result = Builder.CreateShl(result, Builder.getInt32(curr.postshift));
       }
     }
   }
