@@ -219,6 +219,33 @@ void clear_all_indices_of_variable(string *id) {
   }
 }
 
+class AggregatedEnsembleElement {
+public:
+  bool is_an_aggregate;
+
+  Value *value; // used by non-aggregates
+
+  string id;
+  int aggregate_width;
+  int aggregate_min_index;
+
+  AggregatedEnsembleElement(Value *value) {
+    this->is_an_aggregate = false;
+    this->value = value;
+    this->id = "";
+    this->aggregate_width = 0;
+    this->aggregate_min_index = 0;
+  }
+
+  AggregatedEnsembleElement(string id, int aggregate_width, int aggregate_min_index) {
+    this->is_an_aggregate = true;
+    this->value = nullptr;
+    this->id = id;
+    this->aggregate_width = aggregate_width;
+    this->aggregate_min_index = aggregate_min_index;
+  }
+};
+
 class BetterExpr {
 public:
   Value *value;
@@ -233,16 +260,16 @@ public:
     this->index = 0;
   }
 
-  BetterExpr(Value *value, string *id, int index) {
-    this->value = value;
-    this->is_a_single_bit_slice = false; // FIXME change to true
+  BetterExpr(string *id, int index) {
+    this->value = nullptr;
+    this->is_a_single_bit_slice = true;
     this->id = id;
     this->index = index;
   }
 };
 
 Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
-  BetterExpr *curr_expr;
+  BetterExpr *curr_bexpr;
   int curr_postshift;
 
   bool active_streak = false;
@@ -252,33 +279,146 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
 
   Value *result = nullptr;
 
+  int i;
+
+  vector<AggregatedEnsembleElement> aggregated_ensemble;
+
+  // NOTE: postshifts also will end streaks
+  cout << "########### Elaborating an ensemble ############\n";
+
+  i = 0;
   for (tuple<BetterExpr *, int> curr : *ensemble) {
-    curr_expr = get<0>(curr);
+    curr_bexpr = get<0>(curr);
     curr_postshift = get<1>(curr);
 
-    if (result == nullptr) {
-      // First element
-      result = curr_expr->value;
-    } else {
-      result = Builder.CreateOr(Builder.CreateShl(result, Builder.getInt32(1)), curr_expr->value);
+    cout << "ensemble element " << to_string(i) << "\n";
+    if (curr_bexpr->is_a_single_bit_slice) {
+      cout << "* Is a bit slice\n";
+      cout << "* ID is " << *(curr_bexpr->id) << "\n";
+      cout << "* Index is " << curr_bexpr->index << "\n";
     }
 
-    if (curr_postshift != 0) {
-      result = Builder.CreateShl(result, Builder.getInt32(curr_postshift));
+    if (active_streak) {
+      if (
+        curr_bexpr->is_a_single_bit_slice &&
+        string(*curr_bexpr->id) == active_variable &&
+        curr_bexpr->index == (lowest_index - 1)
+      ) {
+        // New streak member!
+        cout << "New streak member\n";
+        lowest_index = curr_bexpr->index;
+      } else {
+        // Streak ended, push streak to aggregated_ensemble
+        active_streak = false;
+        aggregated_ensemble.push_back(
+          AggregatedEnsembleElement(
+            active_variable,
+            highest_index - lowest_index + 1,
+            lowest_index
+          )
+        );
+      }
     }
-  //   if (active_streak) {
-  //     if (bexpr->is_a_single_bit_slice) {
-  //       // Start of a streak
-  //     } else {
-  //       // End of a streak, generate instructions for streak
-  //     }
-  //   } else {
-  //     if (bexpr->is_a_single_bit_slice) {
-  //       // Start of a streak
-  //     } else {
-  //       // Just compute this value and shift
-  //     }
-  //   }
+
+    // The above logic may have ended a streak because of the current element
+    // Check to see if this element is eligible to start a new streak
+    if (!active_streak) {
+      if (curr_bexpr->is_a_single_bit_slice && curr_bexpr->index != 0) {
+        cout << "Starting new streak\n";
+        // Begin a new streak
+        active_streak = true;
+        active_variable = string(*curr_bexpr->id);
+        highest_index = curr_bexpr->index;
+        lowest_index = curr_bexpr->index;
+      } else {
+        // Not eligible for a streak, push expr and postshift to aggregated_ensemble
+        aggregated_ensemble.push_back(AggregatedEnsembleElement(curr_bexpr->value));
+      }
+    }
+    i++;
+    if (active_streak) {
+      cout << "active_variable: " << active_variable << "\n";
+      cout << "highest_index: " << to_string(highest_index) << "\n";
+      cout << "lowest_index: " << to_string(lowest_index) << "\n";
+    }
+  }
+
+  if (active_streak) {
+    // The end of the ensemble is reached, end the streak and push to aggregated_ensemble
+    active_streak = false;
+    aggregated_ensemble.push_back(
+      AggregatedEnsembleElement(
+        active_variable,
+        highest_index - lowest_index + 1,
+        lowest_index
+      )
+    );
+  }
+
+  Value *shifted;
+  Value *masked;
+  Value *read;
+
+  i = 0;
+  cout << "aggregated_ensemble is " << to_string(aggregated_ensemble.size()) << " elements long\n";
+  for (AggregatedEnsembleElement curr : aggregated_ensemble) {
+    // Iterate through this layer and create instructions
+    // It doesn't matter if you know the final shift of the first element
+    // left shifting new elements in affects old elements, too -> same instruction count
+    cout << "Element " << to_string(i) << " is_an_aggregate: " << to_string(curr.is_an_aggregate) << "\n";
+    if (curr.is_an_aggregate) {
+      cout << "id: " << curr.id << "\n";
+      cout << "aggregate_width: " << to_string(curr.aggregate_width) << "\n";
+      cout << "aggregate_min_index: " << to_string(curr.aggregate_min_index) << "\n";
+    }
+
+    i++;
+
+    if (curr.is_an_aggregate) {
+      // Computing the value to shift in
+      if (curr.aggregate_width == 0) {
+        cout << "Zero width aggregate found, doing an indexed read\n";
+        read = indexed_variable_read(&curr.id, curr.aggregate_min_index);
+        if (result == nullptr) {
+          result = read;
+        } else {
+          result = Builder.CreateOr(
+            Builder.CreateShl(result, curr.aggregate_width),
+            read
+          );
+        }
+      } else {
+        if (curr.aggregate_min_index == 0) {
+          shifted = variable_space.read(&curr.id);
+        } else {
+          shifted = Builder.CreateLShr(variable_space.read(&curr.id), curr.aggregate_min_index);
+        }
+
+        if (curr.aggregate_width == 32) {
+          masked = shifted;
+        } else {
+          masked = Builder.CreateAnd(
+            shifted,
+            Builder.getInt32((1 << curr.aggregate_width) - 1) // Gets an aggregate_width-wide bitmask
+          );
+        }
+
+        if (result == nullptr) {
+          result = masked;
+        } else {
+          result = Builder.CreateOr(
+            Builder.CreateShl(result, curr.aggregate_width),
+            masked
+          );
+        }
+      }
+    } else {
+      if (result == nullptr) {
+        result = curr.value;
+      } else {
+        result = Builder.CreateOr(Builder.CreateShl(result, Builder.getInt32(1)), curr.value);
+      }
+    }
   }
 
   return result;
@@ -399,7 +539,7 @@ statements:   statement
 ;
 
 statement: ID ASSIGN ensemble ENDLINE {
-  // fprintf(stdout, "Assigning to %s\n", $1->c_str());
+  fprintf(stdout, "Assigning to %s\n", $1->c_str());
   variable_space.write($1, elaborate_ensemble($3));
 }
 | ID NUMBER ASSIGN ensemble ENDLINE {
@@ -423,7 +563,6 @@ ensemble:  expr {
   $$->push_back(make_tuple($1, 0));
 }
 | expr COLON NUMBER {                  // 566 only
-  // $$ = Builder.CreateShl($1->value, Builder.getInt32($3));
   $$ = new vector<tuple<BetterExpr *, int>>;
   $$->push_back(make_tuple($1, $3));
 }
@@ -434,10 +573,6 @@ ensemble:  expr {
 | ensemble COMMA expr COLON NUMBER {  // 566 only
   $1->push_back(make_tuple($3, $5));
   $$ = $1;
-  // $$ = Builder.CreateShl(
-  //   Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3->value),
-  //   Builder.getInt32($5)
-  // );
 }
 ;
 
@@ -446,7 +581,7 @@ expr:   ID {
   $$ = new BetterExpr(variable_space.read($1));
 }
 | ID NUMBER {
-  $$ = new BetterExpr(indexed_variable_read($1, $2), $1, $2);
+  $$ = new BetterExpr($1, $2);
 }
 | NUMBER {
   $$ = new BetterExpr(Builder.getInt32($1));
