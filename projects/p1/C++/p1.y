@@ -260,8 +260,8 @@ public:
     this->index = 0;
   }
 
-  BetterExpr(string *id, int index) {
-    this->value = nullptr;
+  BetterExpr(Value *value, string *id, int index) {
+    this->value = value;
     this->is_a_single_bit_slice = true;
     this->id = id;
     this->index = index;
@@ -581,7 +581,7 @@ expr:   ID {
   $$ = new BetterExpr(variable_space.read($1));
 }
 | ID NUMBER {
-  $$ = new BetterExpr($1, $2);
+  $$ = new BetterExpr(indexed_variable_read($1, $2), $1, $2);
 }
 | NUMBER {
   $$ = new BetterExpr(Builder.getInt32($1));
