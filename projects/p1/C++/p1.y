@@ -282,24 +282,15 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
 
   Value *result = nullptr;
 
-  int i;
-
   vector<AggregatedEnsembleElement> aggregated_ensemble;
 
-  // NOTE: postshifts also will end streaks
-  cout << "########### Elaborating an ensemble ############\n";
+  Value *shifted;
+  Value *masked;
+  Value *read;
 
-  i = 0;
   for (tuple<BetterExpr *, int> curr : *ensemble) {
     curr_bexpr = get<0>(curr);
     curr_postshift = get<1>(curr);
-
-    cout << "ensemble element " << to_string(i) << "\n";
-    if (curr_bexpr->is_a_single_bit_slice) {
-      cout << "* Is a bit slice\n";
-      cout << "* ID is " << *(curr_bexpr->id) << "\n";
-      cout << "* Index is " << curr_bexpr->index << "\n";
-    }
 
     if (active_streak) {
       if (
@@ -309,7 +300,6 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
         curr_postshift == 0
       ) {
         // New streak member!
-        cout << "New streak member\n";
         lowest_index = curr_bexpr->index;
       } else {
         // Streak ended, push streak to aggregated_ensemble
@@ -328,7 +318,6 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
     // Check to see if this element is eligible to start a new streak
     if (!active_streak) {
       if (curr_bexpr->is_a_single_bit_slice && curr_bexpr->index != 0) {
-        cout << "Starting new streak\n";
         // Begin a new streak
         active_streak = true;
         active_variable = string(*curr_bexpr->id);
@@ -344,12 +333,6 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
         );
       }
     }
-    i++;
-    if (active_streak) {
-      cout << "active_variable: " << active_variable << "\n";
-      cout << "highest_index: " << to_string(highest_index) << "\n";
-      cout << "lowest_index: " << to_string(lowest_index) << "\n";
-    }
   }
 
   if (active_streak) {
@@ -364,29 +347,13 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
     );
   }
 
-  Value *shifted;
-  Value *masked;
-  Value *read;
-
-  i = 0;
-  cout << "aggregated_ensemble is " << to_string(aggregated_ensemble.size()) << " elements long\n";
   for (AggregatedEnsembleElement curr : aggregated_ensemble) {
     // Iterate through this layer and create instructions
     // It doesn't matter if you know the final shift of the first element
     // left shifting new elements in affects old elements, too -> same instruction count
-    cout << "Element " << to_string(i) << " is_an_aggregate: " << to_string(curr.is_an_aggregate) << "\n";
-    if (curr.is_an_aggregate) {
-      cout << "id: " << curr.id << "\n";
-      cout << "aggregate_width: " << to_string(curr.aggregate_width) << "\n";
-      cout << "aggregate_min_index: " << to_string(curr.aggregate_min_index) << "\n";
-    }
-
-    i++;
-
     if (curr.is_an_aggregate) {
       // Computing the value to shift in
       if (curr.aggregate_width == 0) {
-        cout << "Zero width aggregate found, doing an indexed read\n";
         read = indexed_variable_read(&curr.id, curr.aggregate_min_index);
         if (result == nullptr) {
           result = read;
@@ -547,10 +514,6 @@ final: FINAL ensemble endline_opt
 
     for(BasicBlock &BB: *F) {
       for (Instruction &I: BB) {
-        cout << "Found an instruction " << I.getOpcodeName() << "\n";
-        cout << "Is safe to remove? " << to_string(I.isSafeToRemove()) << "\n";
-        cout << "Is use_empty? " << to_string(I.use_empty()) << "\n";
-
         if (I.isSafeToRemove() && I.use_empty()) {
           instructions_to_remove.push_back(&I);
         }
@@ -558,7 +521,6 @@ final: FINAL ensemble endline_opt
     }
 
     for (Instruction *I: instructions_to_remove) {
-      cout << "Attempting to remove\n";
       I->eraseFromParent();
       any_instructions_removed = true;
     }
