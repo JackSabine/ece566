@@ -424,6 +424,8 @@ Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
   return result;
 }
 
+Function *F;
+
 %}
 
 %union {
@@ -478,9 +480,9 @@ inputs:   IN params_list ENDLINE
     FunctionType::get(Builder.getInt32Ty(),Params,false);
 
   // Create a main function
-  Function *Function = Function::Create(FunType,GlobalValue::ExternalLinkage,funName,M);
+  F = Function::Create(FunType,GlobalValue::ExternalLinkage,funName,M);
 
-  for(Argument &a: Function->args()) {
+  for(Argument &a: F->args()) {
     // iterate over arguments of function
     // match name to position
     variable_space.add_argument(
@@ -491,7 +493,7 @@ inputs:   IN params_list ENDLINE
 
   //Add a basic block to main to hold instructions, and set Builder
   //to insert there
-  Builder.SetInsertPoint(BasicBlock::Create(TheContext, "entry", Function));
+  Builder.SetInsertPoint(BasicBlock::Create(TheContext, "entry", F));
 
 }
 | IN NONE ENDLINE
@@ -501,12 +503,12 @@ inputs:   IN params_list ENDLINE
     FunctionType::get(Builder.getInt32Ty(),false);
 
   // Create a main function
-  Function *Function = Function::Create(FunType,
+  F = Function::Create(FunType,
          GlobalValue::ExternalLinkage,funName,M);
 
   //Add a basic block to main to hold instructions, and set Builder
   //to insert there
-  Builder.SetInsertPoint(BasicBlock::Create(TheContext, "entry", Function));
+  Builder.SetInsertPoint(BasicBlock::Create(TheContext, "entry", F));
 }
 ;
 
@@ -524,7 +526,32 @@ params_list: ID
 
 final: FINAL ensemble endline_opt
 {
+  vector<Instruction *> instructions_to_remove;
+  bool any_instructions_removed;
   Builder.CreateRet(elaborate_ensemble($2));
+
+  do {
+    any_instructions_removed = false;
+
+    for(BasicBlock &BB: *F) {
+      for (Instruction &I: BB) {
+        cout << "Found an instruction " << I.getOpcodeName() << "\n";
+        cout << "Is safe to remove? " << to_string(I.isSafeToRemove()) << "\n";
+        cout << "Is use_empty? " << to_string(I.use_empty()) << "\n";
+
+        if (I.isSafeToRemove() && I.use_empty()) {
+          instructions_to_remove.push_back(&I);
+        }
+      }
+    }
+
+    for (Instruction *I: instructions_to_remove) {
+      cout << "Attempting to remove\n";
+      I->eraseFromParent();
+      any_instructions_removed = true;
+    }
+    instructions_to_remove.clear();
+  } while (any_instructions_removed);
 }
 ;
 
