@@ -7,6 +7,7 @@
 #include <string>
 #include <memory>
 #include <stdexcept>
+#include <tuple>
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
@@ -240,6 +241,49 @@ public:
   }
 };
 
+Value *elaborate_ensemble(vector<tuple<BetterExpr *, int>> *ensemble) {
+  BetterExpr *curr_expr;
+  int curr_postshift;
+
+  bool active_streak = false;
+  string active_variable;
+  int highest_index;
+  int lowest_index;
+
+  Value *result = nullptr;
+
+  for (tuple<BetterExpr *, int> curr : *ensemble) {
+    curr_expr = get<0>(curr);
+    curr_postshift = get<1>(curr);
+
+    if (result == nullptr) {
+      // First element
+      result = curr_expr->value;
+    } else {
+      result = Builder.CreateOr(Builder.CreateShl(result, Builder.getInt32(1)), curr_expr->value);
+    }
+
+    if (curr_postshift != 0) {
+      result = Builder.CreateShl(result, Builder.getInt32(curr_postshift));
+    }
+  //   if (active_streak) {
+  //     if (bexpr->is_a_single_bit_slice) {
+  //       // Start of a streak
+  //     } else {
+  //       // End of a streak, generate instructions for streak
+  //     }
+  //   } else {
+  //     if (bexpr->is_a_single_bit_slice) {
+  //       // Start of a streak
+  //     } else {
+  //       // Just compute this value and shift
+  //     }
+  //   }
+  }
+
+  return result;
+}
+
 %}
 
 %union {
@@ -248,13 +292,14 @@ public:
   int number;
   string *id;
   BetterExpr *better_expr;
+  vector<tuple<BetterExpr *, int>> *ens;
 }
 
 /*%define parse.trace*/
 
 %type <params_list> params_list
 %type <better_expr> expr
-%type <val> ensemble
+%type <ens> ensemble
 
 %token IN FINAL
 %token ERROR
@@ -339,7 +384,7 @@ params_list: ID
 
 final: FINAL ensemble endline_opt
 {
-  Builder.CreateRet($2);
+  Builder.CreateRet(elaborate_ensemble($2));
 }
 ;
 
@@ -355,38 +400,44 @@ statements:   statement
 
 statement: ID ASSIGN ensemble ENDLINE {
   // fprintf(stdout, "Assigning to %s\n", $1->c_str());
-  variable_space.write($1, $3);
+  variable_space.write($1, elaborate_ensemble($3));
 }
 | ID NUMBER ASSIGN ensemble ENDLINE {
   if (variable_space.id_is_undeclared($1)) {
     YYABORT;
   }
-  indexed_write_to_variable($1, Builder.getInt32($2), $4);
+  indexed_write_to_variable($1, Builder.getInt32($2), elaborate_ensemble($4));
   clear_specific_index_of_variable($1, $2);
 }
 | ID LBRACKET ensemble RBRACKET ASSIGN ensemble ENDLINE {
   if (variable_space.id_is_undeclared($1)) {
     YYABORT;
   }
-  indexed_write_to_variable($1, $3, $6);
+  indexed_write_to_variable($1, elaborate_ensemble($3), elaborate_ensemble($6));
   clear_all_indices_of_variable($1);
 }
 ;
 
 ensemble:  expr {
-  $$ = $1->value;
+  $$ = new vector<tuple<BetterExpr *, int>>;
+  $$->push_back(make_tuple($1, 0));
 }
 | expr COLON NUMBER {                  // 566 only
-  $$ = Builder.CreateShl($1->value, Builder.getInt32($3));
+  // $$ = Builder.CreateShl($1->value, Builder.getInt32($3));
+  $$ = new vector<tuple<BetterExpr *, int>>;
+  $$->push_back(make_tuple($1, $3));
 }
 | ensemble COMMA expr {
-  $$ = Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3->value);
+  $1->push_back(make_tuple($3, 0));
+  $$ = $1;
 }
 | ensemble COMMA expr COLON NUMBER {  // 566 only
-  $$ = Builder.CreateShl(
-    Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3->value),
-    Builder.getInt32($5)
-  );
+  $1->push_back(make_tuple($3, $5));
+  $$ = $1;
+  // $$ = Builder.CreateShl(
+  //   Builder.CreateOr(Builder.CreateShl($1, Builder.getInt32(1)), $3->value),
+  //   Builder.getInt32($5)
+  // );
 }
 ;
 
@@ -436,22 +487,22 @@ expr:   ID {
     Builder.CreateAnd(
       Builder.CreateLShr(
         variable_space.read($1),
-        $3
+        elaborate_ensemble($3)
       ),
       Builder.getInt32(1)
     )
   );
 }
 | LPAREN ensemble RPAREN {
-  $$ = new BetterExpr($2);
+  $$ = new BetterExpr(elaborate_ensemble($2));
 }
 /* 566 only */
 | LPAREN ensemble RPAREN LBRACKET ensemble RBRACKET {
   $$ = new BetterExpr(
       Builder.CreateAnd(
       Builder.CreateLShr(
-        $2,
-        $5
+        elaborate_ensemble($2),
+        elaborate_ensemble($5)
       ),
       Builder.getInt32(1)
     )
@@ -470,16 +521,16 @@ expr:   ID {
   $$ = new BetterExpr(id_tree_reduction($4, REDUCE_ADD));
 }
 | REDUCE AND LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_AND));
+  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_AND));
 }
 | REDUCE OR LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_OR));
+  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_OR));
 }
 | REDUCE XOR LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_XOR));
+  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_XOR));
 }
 | REDUCE PLUS LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction($4, REDUCE_ADD));
+  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_ADD));
 }
 | EXPAND  LPAREN ensemble RPAREN {
   // Duplicate the lsb 32 times
@@ -493,7 +544,7 @@ expr:   ID {
     Builder.CreateSub(
       Builder.getInt32(0),
       Builder.CreateAnd(
-        $3,
+        elaborate_ensemble($3),
         Builder.getInt32(1)
       )
     )
