@@ -190,6 +190,31 @@ Value *ensemble_reduce_xor(Value *ensemble_value) {
   return reduced;
 }
 
+Value *ensemble_reduce_and(Value *ensemble_value) {
+  Value *all;
+
+  all = Builder.CreateIsNull(
+    Builder.CreateAdd(
+      ensemble_value,
+      Builder.getInt32(1)
+    )
+  );
+
+  all = Builder.CreateZExt(all, Builder.getInt32Ty());
+
+  return all;
+}
+
+Value *ensemble_reduce_or(Value *ensemble_value) {
+  Value *any;
+
+  any = Builder.CreateIsNotNull(ensemble_value);
+
+  any = Builder.CreateZExt(any, Builder.getInt32Ty());
+
+  return any;
+}
+
 void indexed_write_to_variable(string *id, Value *index, Value *value_to_write) {
   Value *local_id_value;
 
@@ -696,10 +721,10 @@ expr:   ID {
   );
 }
 | REDUCE AND LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_AND));
+  $$ = new BetterExpr(ensemble_reduce_and(elaborate_ensemble($4)));
 }
 | REDUCE OR LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_OR));
+  $$ = new BetterExpr(ensemble_reduce_or(elaborate_ensemble($4)));
 }
 | REDUCE XOR LPAREN ensemble RPAREN {
   $$ = new BetterExpr(ensemble_reduce_xor(elaborate_ensemble($4)));
