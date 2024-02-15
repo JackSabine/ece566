@@ -87,33 +87,12 @@ Value *reduction_atom(Value *LHS, Value *RHS, ReductionType reduction_type) {
   }
 }
 
-Value *id_tree_reduction(string *id, ReductionType reduction_type) {
-  Value *bit_array[32];
-
-  for (int i = 0; i < 32; i++) {
-    bit_array[i] = indexed_variable_read(id, i);
-  }
-
-  // bit_array is now the ensemble split into 32 numbers whose values are in the set {0, 1}
-  for (int inc = 1; inc < 32; inc *= 2) {
-    for (int i = 0; i < 32; i = i + (2*inc)) {
-      bit_array[i] = reduction_atom(
-        bit_array[i],
-        bit_array[i + inc],
-        reduction_type
-      );
-    }
-  }
-
-  return bit_array[0];
-}
-
 Value *ensemble_tree_reduction(Value *ensemble_value, ReductionType reduction_type) {
   Value *bit_array[32];
 
   for (int i = 0; i < 32; i++) {
     if (i == 0) bit_array[i] = Builder.CreateAnd(ensemble_value, Builder.getInt32(1));
-    if (i == 31) bit_array[i] = Builder.CreateLShr(ensemble_value, Builder.getInt32(1));
+    if (i == 31) bit_array[i] = Builder.CreateLShr(ensemble_value, Builder.getInt32(31));
     else {
       bit_array[i] = Builder.CreateAnd(
         Builder.CreateLShr(
@@ -643,18 +622,6 @@ expr:   ID {
       Builder.getInt32(1)
     )
   );
-}
-| REDUCE AND LPAREN ID RPAREN {
-  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_AND));
-}
-| REDUCE OR LPAREN ID RPAREN {
-  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_OR));
-}
-| REDUCE XOR LPAREN ID RPAREN {
-  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_XOR));
-}
-| REDUCE PLUS LPAREN ID RPAREN {
-  $$ = new BetterExpr(id_tree_reduction($4, REDUCE_ADD));
 }
 | REDUCE AND LPAREN ensemble RPAREN {
   $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_AND));
