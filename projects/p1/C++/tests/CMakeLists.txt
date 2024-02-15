@@ -77,3 +77,4 @@ p1_simple_test(into_ecc 566)
 
 p1_simple_test(colon_test_1 unofficial)
 p1_simple_test(colon_test_2 unofficial)
+p1_simple_test(reduce_xor unofficial)
