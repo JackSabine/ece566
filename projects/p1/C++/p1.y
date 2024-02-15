@@ -118,6 +118,78 @@ Value *ensemble_tree_reduction(Value *ensemble_value, ReductionType reduction_ty
   return bit_array[0];
 }
 
+Value *ensemble_reduce_add(Value *ensemble_value) {
+  Value *one_sum, *two_sum, *four_sum, *eight_sum, *thirtytwo_sum, *reduced;
+
+  one_sum = ensemble_value;
+
+  two_sum = Builder.CreateSub(
+    one_sum,
+    Builder.CreateAnd(
+      Builder.CreateLShr(
+        one_sum,
+        Builder.getInt32(1)
+      ),
+      Builder.getInt32(0x55555555)
+    )
+  );
+
+  four_sum = Builder.CreateAdd(
+    Builder.CreateAnd(two_sum, Builder.getInt32(0x33333333)),
+    Builder.CreateAnd(
+      Builder.CreateLShr(two_sum, Builder.getInt32(2)),
+      Builder.getInt32(0x33333333)
+    )
+  );
+
+  eight_sum = Builder.CreateAnd(
+    Builder.CreateAdd(
+      four_sum,
+      Builder.CreateLShr(
+        four_sum,
+        Builder.getInt32(4)
+      )
+    ),
+    Builder.getInt32(0x0F0F0F0F)
+  );
+
+  thirtytwo_sum = Builder.CreateMul(
+    eight_sum,
+    Builder.getInt32(0x01010101)
+  );
+
+  reduced = Builder.CreateLShr(thirtytwo_sum, Builder.getInt32(24));
+
+  return reduced;
+}
+
+Value *ensemble_reduce_xor(Value *ensemble_value) {
+  Value *full, *half, *quar, *mult, *reduced;
+
+  full = ensemble_value;
+
+  half = Builder.CreateXor(full, Builder.CreateLShr(full, Builder.getInt32(1)));
+  quar = Builder.CreateXor(half, Builder.CreateLShr(half, Builder.getInt32(2)));
+
+  mult = Builder.CreateMul(
+    Builder.CreateAnd(
+      quar,
+      Builder.getInt32(0x11111111)
+    ),
+    Builder.getInt32(0x11111111)
+  );
+
+  reduced = Builder.CreateAnd(
+    Builder.CreateLShr(
+      mult,
+      Builder.getInt32(28)
+    ),
+    Builder.getInt32(1)
+  );
+
+  return reduced;
+}
+
 void indexed_write_to_variable(string *id, Value *index, Value *value_to_write) {
   Value *local_id_value;
 
@@ -630,10 +702,10 @@ expr:   ID {
   $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_OR));
 }
 | REDUCE XOR LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_XOR));
+  $$ = new BetterExpr(ensemble_reduce_xor(elaborate_ensemble($4)));
 }
 | REDUCE PLUS LPAREN ensemble RPAREN {
-  $$ = new BetterExpr(ensemble_tree_reduction(elaborate_ensemble($4), REDUCE_ADD));
+  $$ = new BetterExpr(ensemble_reduce_add(elaborate_ensemble($4)));
 }
 | EXPAND  LPAREN ensemble RPAREN {
   // Duplicate the lsb 32 times
