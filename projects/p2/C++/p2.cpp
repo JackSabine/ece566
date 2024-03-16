@@ -162,7 +162,91 @@ static llvm::Statistic CSELdElim = {"", "CSELdElim", "CSE redundant loads"};
 static llvm::Statistic CSEStore2Load = {"", "CSEStore2Load", "CSE forwarded store to load"};
 static llvm::Statistic CSEStElim = {"", "CSEStElim", "CSE redundant stores"};
 
-static void CommonSubexpressionElimination(Module *) {
-    // Implement this function
+bool isDead(Instruction &I) {
+    int32_t opcode;
+    LoadInst *li;
+
+    opcode = I.getOpcode();
+
+    switch(opcode) {
+        case Instruction::FNeg:
+        case Instruction::FAdd:
+        case Instruction::Sub:
+        case Instruction::FSub:
+        case Instruction::Mul:
+        case Instruction::FMul:
+        case Instruction::UDiv:
+        case Instruction::SDiv:
+        case Instruction::FDiv:
+        case Instruction::URem:
+        case Instruction::SRem:
+        case Instruction::FRem:
+        case Instruction::Shl:
+        case Instruction::LShr:
+        case Instruction::AShr:
+        case Instruction::And:
+        case Instruction::Or:
+        case Instruction::Xor:
+        case Instruction::GetElementPtr:
+        case Instruction::Trunc:
+        case Instruction::ZExt:
+        case Instruction::SExt:
+        case Instruction::FPToUI:
+        case Instruction::FPToSI:
+        case Instruction::UIToFP:
+        case Instruction::SIToFP:
+        case Instruction::FPTrunc:
+        case Instruction::FPExt:
+        case Instruction::PtrToInt:
+        case Instruction::IntToPtr:
+        case Instruction::BitCast:
+        case Instruction::AddrSpaceCast:
+        case Instruction::ICmp:
+        case Instruction::FCmp:
+        case Instruction::ExtractElement:
+        case Instruction::InsertElement:
+        case Instruction::ShuffleVector:
+        case Instruction::ExtractValue:
+        case Instruction::InsertValue:
+        case Instruction::Alloca:
+        case Instruction::PHI:
+        case Instruction::Select:
+            if (I.use_begin() == I.use_end()) {
+                return true;
+            }
+            break;
+
+        case Instruction::Load:
+            li = dyn_cast<LoadInst>(&I);
+            if (li && li->isVolatile()) {
+                return false;
+            } else if (I.use_begin() == I.use_end()) {
+                return true;
+            }
+            break;
+
+        default:
+            return false;
+            break;
+    }
+
+    return false;
+}
+
+static void CommonSubexpressionElimination(Module *M) {
+    for (Function &F : M->functions()) {
+        for (BasicBlock &BB: F) {
+            auto I = BB.begin();
+            while (I != BB.end()) {
+                // Simple DCE
+                if (isDead(*I)) {
+                    I = I->eraseFromParent();
+                    CSEDead++;
+                } else {
+                    I++;
+                }
+            }
+        }
+    }
 }
 
