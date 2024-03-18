@@ -234,6 +234,8 @@ bool isDead(Instruction &I) {
 }
 
 static void CommonSubexpressionElimination(Module *M) {
+    Value *simplified_instruction;
+
     for (Function &F : M->functions()) {
         for (BasicBlock &BB: F) {
             auto I = BB.begin();
@@ -242,6 +244,10 @@ static void CommonSubexpressionElimination(Module *M) {
                 if (isDead(*I)) {
                     I = I->eraseFromParent();
                     CSEDead++;
+                } else if ((simplified_instruction = simplifyInstruction(&*I, M->getDataLayout())) != nullptr)  {
+                    I->replaceAllUsesWith(simplified_instruction);
+                    I = I->eraseFromParent();
+                    CSESimplify++;
                 } else {
                     I++;
                 }
