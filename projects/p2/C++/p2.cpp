@@ -240,11 +240,12 @@ static void CommonSubexpressionElimination(Module *M) {
         for (BasicBlock &BB: F) {
             auto I = BB.begin();
             while (I != BB.end()) {
-                // Simple DCE
-                if (isDead(*I)) {
+                simplified_instruction = simplifyInstruction(&*I, M->getDataLayout());
+
+                if (isDead(*I)) { // Simple DCE
                     I = I->eraseFromParent();
                     CSEDead++;
-                } else if ((simplified_instruction = simplifyInstruction(&*I, M->getDataLayout())) != nullptr)  {
+                } else if (simplified_instruction != nullptr && !PoisonValue::classof(simplified_instruction))  { // Simple constant folding
                     I->replaceAllUsesWith(simplified_instruction);
                     I = I->eraseFromParent();
                     CSESimplify++;
