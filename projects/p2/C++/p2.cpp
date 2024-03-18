@@ -233,14 +233,140 @@ bool isDead(Instruction &I) {
     return false;
 }
 
+class CSE_Bank {
+private:
+
+    class CSE_Bank_Entry {
+    public:
+        unsigned int opcode;
+        Type *type;
+        unsigned int num_operands;
+        std::vector<Value *> operands;
+
+        Instruction *inst;
+
+        CSE_Bank_Entry(Instruction &I) {
+            opcode = I.getOpcode();
+            type = I.getType();
+            num_operands = I.getNumOperands();
+            for (unsigned i = 0; i < num_operands; i++) {
+                operands.push_back(I.getOperand(i));
+            }
+
+            inst = &I;
+        }
+
+        ~CSE_Bank_Entry() {}
+    };
+
+    std::vector<CSE_Bank_Entry> bank;
+
+    bool opcode_can_be_redundant(unsigned opcode) {
+        switch(opcode) {
+            case Instruction::FNeg:
+            case Instruction::FAdd:
+            case Instruction::Sub:
+            case Instruction::FSub:
+            case Instruction::Mul:
+            case Instruction::FMul:
+            case Instruction::UDiv:
+            case Instruction::SDiv:
+            case Instruction::FDiv:
+            case Instruction::URem:
+            case Instruction::SRem:
+            case Instruction::FRem:
+            case Instruction::Shl:
+            case Instruction::LShr:
+            case Instruction::AShr:
+            case Instruction::And:
+            case Instruction::Or:
+            case Instruction::Xor:
+            case Instruction::GetElementPtr:
+            case Instruction::Trunc:
+            case Instruction::ZExt:
+            case Instruction::SExt:
+            case Instruction::FPToUI:
+            case Instruction::FPToSI:
+            case Instruction::UIToFP:
+            case Instruction::SIToFP:
+            case Instruction::FPTrunc:
+            case Instruction::FPExt:
+            case Instruction::PtrToInt:
+            case Instruction::IntToPtr:
+            case Instruction::BitCast:
+            case Instruction::AddrSpaceCast:
+            case Instruction::ICmp:
+            case Instruction::FCmp:
+            case Instruction::ExtractElement:
+            case Instruction::InsertElement:
+            case Instruction::ShuffleVector:
+            case Instruction::ExtractValue:
+            case Instruction::InsertValue:
+            // case Instruction::Alloca:
+            case Instruction::PHI:
+            case Instruction::Select:
+                return true;
+                break;
+
+            default:
+                return false;
+                break;
+        }
+
+        return false;
+    }
+
+public:
+    void clear_bank() {
+        bank.clear();
+    }
+
+    Instruction *is_instruction_in_bank(Instruction &I) {
+        bool operands_differ;
+
+        for (CSE_Bank_Entry &entry : bank) {
+            if (entry.opcode       != I.getOpcode()     ) continue;
+            if (entry.type         != I.getType()       ) continue;
+            if (entry.num_operands != I.getNumOperands()) continue;
+
+            operands_differ = false;
+            for (unsigned i = 0; i < entry.num_operands; i++) {
+                if (entry.operands[i] != I.getOperand(i)) {
+                    operands_differ = true;
+                    break;
+                }
+            }
+
+            if (operands_differ) continue;
+
+            return entry.inst;
+        }
+
+        return nullptr;
+    }
+
+    void add_to_bank_if_legal(Instruction &I) {
+        if (this->opcode_can_be_redundant(I.getOpcode())) {
+            bank.push_back(CSE_Bank_Entry(I));
+        } else {
+            // errs() << "Blocked adding a " << std::string(I.getOpcodeName()) << " to the bank\n";
+        }
+    }
+};
+
 static void CommonSubexpressionElimination(Module *M) {
     Value *simplified_instruction;
+    Instruction *cse_older_instruction;
+    CSE_Bank cse_bank;
 
     for (Function &F : M->functions()) {
         for (BasicBlock &BB: F) {
             auto I = BB.begin();
+            cse_bank.clear_bank();
+
             while (I != BB.end()) {
                 simplified_instruction = simplifyInstruction(&*I, M->getDataLayout());
+                cse_older_instruction = cse_bank.is_instruction_in_bank(*I);
 
                 if (isDead(*I)) { // Simple DCE
                     I = I->eraseFromParent();
@@ -249,7 +375,12 @@ static void CommonSubexpressionElimination(Module *M) {
                     I->replaceAllUsesWith(simplified_instruction);
                     I = I->eraseFromParent();
                     CSESimplify++;
+                } else if (cse_older_instruction != nullptr) {
+                    I->replaceAllUsesWith(cse_older_instruction);
+                    I = I->eraseFromParent();
+                    CSEElim++;
                 } else {
+                    cse_bank.add_to_bank_if_legal(*I);
                     I++;
                 }
             }
