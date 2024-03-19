@@ -245,7 +245,9 @@ private:
 
         Instruction *inst;
 
-        CSE_Bank_Entry(Instruction &I) {
+        std::string owner;
+
+        CSE_Bank_Entry(Instruction &I, std::string owner_bb) {
             opcode = I.getOpcode();
             type = I.getType();
             num_operands = I.getNumOperands();
@@ -254,6 +256,8 @@ private:
             }
 
             inst = &I;
+
+            owner = owner_bb;
         }
 
         ~CSE_Bank_Entry() {}
@@ -317,8 +321,20 @@ private:
     }
 
 public:
-    void clear_bank() {
+    void clear_all() {
         bank.clear();
+    }
+
+    void clear_matching(std::string owner_to_erase) {
+        bank.erase(
+            std::remove_if(
+                bank.begin(),
+                bank.end(),
+                [owner_to_erase](CSE_Bank_Entry &entry) {
+                    return entry.owner == owner_to_erase;
+                }),
+            bank.end()
+        );
     }
 
     Instruction *is_instruction_in_bank(Instruction &I) {
@@ -345,9 +361,9 @@ public:
         return nullptr;
     }
 
-    void add_to_bank_if_legal(Instruction &I) {
+    void add_to_bank_if_legal(Instruction &I, std::string owner_bb) {
         if (this->opcode_can_be_redundant(I.getOpcode())) {
-            bank.push_back(CSE_Bank_Entry(I));
+            bank.push_back(CSE_Bank_Entry(I, owner_bb));
         } else {
             // errs() << "Blocked adding a " << std::string(I.getOpcodeName()) << " to the bank\n";
         }
@@ -393,29 +409,55 @@ void SimplifyInstructions(Module *M) {
     }
 }
 
-void MatchingCommonSubexpressionElimination(Module *M) {
+void Recursive_MCSE_Helper(DomTreeNode *node, CSE_Bank &cse_bank) {
+    BasicBlock *BB;
+    std::string BB_Name;
     Instruction *cse_older_instruction;
-    CSE_Bank cse_bank;
 
-    for (Function &F : M->functions()) {
-        for (BasicBlock &BB: F) {
-            auto I = BB.begin();
-            cse_bank.clear_bank();
+    BB = node->getBlock();
+    BB_Name = BB->getName().str();
 
-            while (I != BB.end()) {
-                cse_older_instruction = cse_bank.is_instruction_in_bank(*I);
+    // Parse THIS basic block's code
+    auto I = BB->begin();
+    while(I != BB->end()) {
+        cse_older_instruction = cse_bank.is_instruction_in_bank(*I);
 
-                if (cse_older_instruction != nullptr) {
-                    I->replaceAllUsesWith(cse_older_instruction);
-                    I = I->eraseFromParent();
-                    CSEElim++;
-                } else {
-                    cse_bank.add_to_bank_if_legal(*I);
-                    I++;
-                }
-            }
+        if (cse_older_instruction != nullptr) {
+            I->replaceAllUsesWith(cse_older_instruction);
+            I = I->eraseFromParent();
+            CSEElim++;
+        } else {
+            cse_bank.add_to_bank_if_legal(*I, BB_Name);
+            I++;
         }
     }
+
+    // Iterate over children recursively
+    for (DomTreeNodeBase<BasicBlock> **child = node->begin(); child != node->end(); child++) {
+        Recursive_MCSE_Helper(*child, cse_bank);
+    }
+
+    // Once finished with children, clear this block from the cse_bank
+    cse_bank.clear_matching(BB_Name);
+}
+
+void MatchingCommonSubexpressionElimination(Module *M) {
+    CSE_Bank cse_bank;
+    DominatorTreeBase<BasicBlock, false> *dominator_tree;
+    DomTreeNode *tree_root;
+
+    dominator_tree = new DominatorTree();
+
+    for (Function &F : M->functions()) {
+        if (F.begin() == F.end()) continue; // Function has no basic blocks, skip
+
+        dominator_tree->recalculate(F);
+
+        tree_root = dominator_tree->getRootNode();
+        Recursive_MCSE_Helper(tree_root, cse_bank);
+    }
+
+    delete dominator_tree;
 }
 
 static void CommonSubexpressionElimination(Module *M) {
