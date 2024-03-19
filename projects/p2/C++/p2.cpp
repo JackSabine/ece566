@@ -530,9 +530,13 @@ void EliminateRedundantLoads(Module *M) {
 }
 
 static void CommonSubexpressionElimination(Module *M) {
-    SimpleDeadCodeElimination(M);
-    SimplifyInstructions(M);
-    MatchingCommonSubexpressionElimination(M);
-    EliminateRedundantLoads(M);
+    const int NUM_PASSES = 2;
+
+    for (int i = 0; i < NUM_PASSES; i++) {
+        SimpleDeadCodeElimination(M);
+        SimplifyInstructions(M);
+        MatchingCommonSubexpressionElimination(M);
+        EliminateRedundantLoads(M);
+    }
 }
 
