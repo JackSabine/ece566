@@ -339,6 +339,9 @@ public:
 
     Instruction *is_instruction_in_bank(Instruction &I) {
         bool operands_differ;
+        unsigned opcode;
+        ExtractValueInst *entry_ev, *inst_ev;
+        CmpInst *entry_cmp, *inst_cmp;
 
         for (CSE_Bank_Entry &entry : bank) {
             if (entry.opcode       != I.getOpcode()     ) continue;
@@ -354,6 +357,32 @@ public:
             }
 
             if (operands_differ) continue;
+
+            opcode = I.getOpcode();
+
+            switch (opcode) {
+                case Instruction::ExtractValue:
+                    entry_ev = dyn_cast<ExtractValueInst>(entry.inst);
+                    inst_ev = dyn_cast<ExtractValueInst>(&I);
+
+                    if (entry_ev->getNumIndices() != inst_ev->getNumIndices()) continue;
+
+                    if (!std::equal(entry_ev->idx_begin(), entry_ev->idx_end(), inst_ev->idx_begin(), inst_ev->idx_end())) {
+                        continue;
+                    }
+                    break;
+
+                case Instruction::ICmp:
+                case Instruction::FCmp:
+                    entry_cmp = dyn_cast<CmpInst>(entry.inst);
+                    inst_cmp = dyn_cast<CmpInst>(&I);
+
+                    if (entry_cmp->getPredicate() != inst_cmp->getPredicate()) continue;
+                    break;
+
+                default:
+                    break;
+            }
 
             return entry.inst;
         }
