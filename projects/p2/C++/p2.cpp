@@ -489,9 +489,50 @@ void MatchingCommonSubexpressionElimination(Module *M) {
     delete dominator_tree;
 }
 
+bool DoLoadInstructionsMatch(LoadInst *A, LoadInst *B) {
+    return A->getPointerOperand() == B->getPointerOperand() &&
+           A->getType() == B->getType();
+}
+
+void EliminateRedundantLoads(Module *M) {
+    BasicBlock::iterator I, J;
+    LoadInst *ILoad, *JLoad;
+
+    for (Function &F : M->functions()) {
+        for (BasicBlock &BB : F) {
+            for (I = BB.begin(); I != BB.end(); I++) {
+                if (!isa<LoadInst>(&*I)) continue;
+
+                ILoad = dyn_cast<LoadInst>(&*I);
+
+                J = std::next(I);
+
+                while (J != BB.end()) {
+                    if (isa<StoreInst>(&*J)) break; // Stop considering ILoad, move on
+
+                    if (isa<LoadInst>(&*J)) {
+                        JLoad = dyn_cast<LoadInst>(&*J);
+
+                        if (!JLoad->isVolatile() && DoLoadInstructionsMatch(ILoad, JLoad)) {
+                            J->replaceAllUsesWith(&*I);
+                            J = J->eraseFromParent();
+                            CSELdElim++;
+                        } else {
+                            J++;
+                        }
+                    } else {
+                        J++;
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void CommonSubexpressionElimination(Module *M) {
     SimpleDeadCodeElimination(M);
     SimplifyInstructions(M);
     MatchingCommonSubexpressionElimination(M);
+    EliminateRedundantLoads(M);
 }
 
