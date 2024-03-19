@@ -6,7 +6,7 @@ mkdir -p build
 cd build
 make
 
-rm -r p2-test
+rm -rf p2-test
 mkdir p2-test
 cd p2-test
 

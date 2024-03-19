@@ -356,7 +356,7 @@ public:
 
 void SimpleDeadCodeElimination(Module *M) {
     for (Function &F : M->functions()) {
-        for (BasicBlock &BB: F) {
+        for (BasicBlock &BB : F) {
             auto I = BB.begin();
 
             while (I != BB.end()) {
@@ -375,7 +375,7 @@ void SimplifyInstructions(Module *M) {
     Value *simplified_instruction;
 
     for (Function &F : M->functions()) {
-        for (BasicBlock &BB: F) {
+        for (BasicBlock &BB : F) {
             auto I = BB.begin();
 
             while (I != BB.end()) {
