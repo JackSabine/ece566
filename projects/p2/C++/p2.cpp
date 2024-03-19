@@ -354,8 +354,46 @@ public:
     }
 };
 
-static void CommonSubexpressionElimination(Module *M) {
+void SimpleDeadCodeElimination(Module *M) {
+    for (Function &F : M->functions()) {
+        for (BasicBlock &BB: F) {
+            auto I = BB.begin();
+
+            while (I != BB.end()) {
+                if (isDead(*I)) { // Simple DCE
+                    I = I->eraseFromParent();
+                    CSEDead++;
+                } else {
+                    I++;
+                }
+            }
+        }
+    }
+}
+
+void SimplifyInstructions(Module *M) {
     Value *simplified_instruction;
+
+    for (Function &F : M->functions()) {
+        for (BasicBlock &BB: F) {
+            auto I = BB.begin();
+
+            while (I != BB.end()) {
+                simplified_instruction = simplifyInstruction(&*I, M->getDataLayout());
+
+                if (simplified_instruction != nullptr && !PoisonValue::classof(simplified_instruction))  { // Simple constant folding
+                    I->replaceAllUsesWith(simplified_instruction);
+                    I = I->eraseFromParent();
+                    CSESimplify++;
+                } else {
+                    I++;
+                }
+            }
+        }
+    }
+}
+
+void MatchingCommonSubexpressionElimination(Module *M) {
     Instruction *cse_older_instruction;
     CSE_Bank cse_bank;
 
@@ -365,17 +403,9 @@ static void CommonSubexpressionElimination(Module *M) {
             cse_bank.clear_bank();
 
             while (I != BB.end()) {
-                simplified_instruction = simplifyInstruction(&*I, M->getDataLayout());
                 cse_older_instruction = cse_bank.is_instruction_in_bank(*I);
 
-                if (isDead(*I)) { // Simple DCE
-                    I = I->eraseFromParent();
-                    CSEDead++;
-                } else if (simplified_instruction != nullptr && !PoisonValue::classof(simplified_instruction))  { // Simple constant folding
-                    I->replaceAllUsesWith(simplified_instruction);
-                    I = I->eraseFromParent();
-                    CSESimplify++;
-                } else if (cse_older_instruction != nullptr) {
+                if (cse_older_instruction != nullptr) {
                     I->replaceAllUsesWith(cse_older_instruction);
                     I = I->eraseFromParent();
                     CSEElim++;
@@ -386,5 +416,11 @@ static void CommonSubexpressionElimination(Module *M) {
             }
         }
     }
+}
+
+static void CommonSubexpressionElimination(Module *M) {
+    SimpleDeadCodeElimination(M);
+    SimplifyInstructions(M);
+    MatchingCommonSubexpressionElimination(M);
 }
 
