@@ -512,6 +512,7 @@ void EliminateRedundantLoads(Module *M) {
 
                 while (J != BB.end()) {
                     if (isa<StoreInst>(&*J)) break; // Stop considering ILoad, move on
+                    if (isa<CallInst>(&*J)) break; // Calls are treated as global stores, treat similarly
 
                     if (isa<LoadInst>(&*J)) {
                         JLoad = dyn_cast<LoadInst>(&*J);
