@@ -490,8 +490,11 @@ void MatchingCommonSubexpressionElimination(Module *M) {
 }
 
 bool DoLoadInstructionsMatch(LoadInst *A, LoadInst *B) {
-    return A->getPointerOperand() == B->getPointerOperand() &&
-           A->getType() == B->getType();
+    return (
+        A->getPointerOperand() == B->getPointerOperand() &&
+        A->getType()           == B->getType() &&
+        A->getAlign()          == B->getAlign()
+    );
 }
 
 void EliminateRedundantLoads(Module *M) {
@@ -529,6 +532,88 @@ void EliminateRedundantLoads(Module *M) {
     }
 }
 
+bool CanPerformStoreToLoadForward(StoreInst *store, LoadInst *load) {
+    return (
+        !load->isVolatile() &&
+        load->getPointerOperand() == store->getPointerOperand() &&
+        load->getType()           == store->getValueOperand()->getType() &&
+        load->getAlign()          == store->getAlign()
+    );
+}
+
+bool CanEliminateRedundantStore(StoreInst *older_store, StoreInst *younger_store) {
+    return (
+        !older_store->isVolatile() &&
+        older_store->getPointerOperand()          == younger_store->getPointerOperand() &&
+        older_store->getValueOperand()->getType() == younger_store->getValueOperand()->getType() &&
+        older_store->getAlign()                   == younger_store->getAlign()
+    );
+}
+
+void EliminateRedundantStores(Module *M) {
+    BasicBlock::iterator I, J;
+    StoreInst *IStore, *JStore;
+    LoadInst *JLoad;
+
+    bool I_was_erased;
+
+    for (Function &F : M->functions()) {
+        for (BasicBlock &BB : F) {
+            I = BB.begin();
+
+            while (I != BB.end()) {
+                if (!isa<StoreInst>(&*I))  {
+                    I++;
+                    continue;
+                }
+
+                IStore = dyn_cast<StoreInst>(&*I);
+
+                J = std::next(I);
+
+                I_was_erased = false;
+
+                while (J != BB.end()) {
+                    if (isa<CallInst>(&*J)) break; // Stop considering I if a call is found (treated as a global store)
+
+                    if (isa<LoadInst>(&*J)) {
+                        JLoad = dyn_cast<LoadInst>(&*J);
+
+                        if (CanPerformStoreToLoadForward(IStore, JLoad)) {
+                            J->replaceAllUsesWith(IStore->getValueOperand());
+                            J = J->eraseFromParent();
+                            CSEStore2Load++;
+                        } else {
+                            // Non-matching load found, must break
+                            break;
+                        }
+                    } else if (isa<StoreInst>(&*J)) {
+                        JStore = dyn_cast<StoreInst>(&*J);
+
+                        if (CanEliminateRedundantStore(IStore, JStore)) {
+                            I = I->eraseFromParent();
+                            CSEStElim++;
+                            I_was_erased = true;
+                            // I was eliminated, move on to the next store
+                            break;
+                        } else {
+                            // Non-matching store found, must break
+                            break;
+                        }
+                    } else {
+                        // Not a load, store, or call -> skip this instruction
+                        J++;
+                    }
+                }
+
+                if (!I_was_erased) {
+                    I++;
+                }
+            }
+        }
+    }
+}
+
 static void CommonSubexpressionElimination(Module *M) {
     const int NUM_PASSES = 2;
 
@@ -537,6 +622,7 @@ static void CommonSubexpressionElimination(Module *M) {
         SimplifyInstructions(M);
         MatchingCommonSubexpressionElimination(M);
         EliminateRedundantLoads(M);
+        EliminateRedundantStores(M);
     }
 }
 
